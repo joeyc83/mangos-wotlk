@@ -129,12 +129,37 @@ struct IncreasedHolyLightHealing : public AuraScript
 // 31789 - Righteous Defense
 struct RighteousDefense : public SpellScript
 {
-    bool OnCheckTarget(const Spell* /*spell*/, Unit* target, SpellEffectIndex /*eff*/) const override
+    SpellCastResult OnCheckCast(Spell* spell, bool /*strict*/) const override
     {
-        if (!target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
-            return false;
+        Unit* target = spell->m_targets.getUnitTarget();
+        if (!target)
+            return SPELL_CAST_OK;
 
-        return true;
+        Unit* caster = spell->GetCaster();
+        if (spell->m_spellInfo->HasAttribute(SPELL_ATTR_EX5_IMPLIED_TARGETING))
+        {
+            if (!caster->CanAssistSpell(target, spell->m_spellInfo))
+            {
+                if (Unit* targetOfUnitTarget = target->GetTarget(caster))
+                {
+                    if (caster->CanAssistSpell(targetOfUnitTarget, spell->m_spellInfo))
+                        target = targetOfUnitTarget;
+                }
+            }
+        }
+
+        if (target->getAttackers().empty())
+            return SPELL_FAILED_BAD_TARGETS;
+
+        return SPELL_CAST_OK;
+    }
+
+    bool OnCheckTarget(const Spell* spell, Unit* target, SpellEffectIndex /*eff*/) const override
+    {
+        if (target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED) || spell->GetCaster()->CanAssistSpell(target, spell->m_spellInfo))
+            return true;
+
+        return false;
     }
 
     void OnEffectExecute(Spell* spell, SpellEffectIndex effIdx) const override
@@ -147,13 +172,8 @@ struct RighteousDefense : public SpellScript
             return;
         Unit* caster = spell->GetCaster();
 
-        // non-standard cast requirement check
         if (unitTarget->getAttackers().empty())
-        {
-            caster->RemoveSpellCooldown(*spell->m_spellInfo, true);
-            spell->SendCastResult(SPELL_FAILED_TARGET_AFFECTING_COMBAT);
             return;
-        }
 
         // not empty (checked), copy
         Unit::AttackerSet attackers = unitTarget->getAttackers();

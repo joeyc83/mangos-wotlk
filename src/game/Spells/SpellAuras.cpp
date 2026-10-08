@@ -5045,8 +5045,15 @@ void Aura::HandleAuraModStun(bool apply, bool Real)
 void Aura::HandleModStealth(bool apply, bool Real)
 {
     Unit* target = GetTarget();
+    
+    int32 amount = m_modifier.m_amount;
+    uint32 spellLevel = GetSpellProto()->spellLevel;
+    if (spellLevel == 0) spellLevel = 1;
+    if (target->GetLevel() > spellLevel)
+        amount += int32(target->GetLevel() - spellLevel) * 5;
+
     // TODO: add mask
-    target->GetVisibilityData().AddStealthStrength(StealthType(m_modifier.m_miscvalue), apply ? m_modifier.m_amount : -m_modifier.m_amount);
+    target->GetVisibilityData().AddStealthStrength(StealthType(m_modifier.m_miscvalue), apply ? amount : -amount);
 
     if (apply)
     {

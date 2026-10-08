@@ -1730,6 +1730,11 @@ bool WorldObject::HasInArcAt(float x, float y, float o, const WorldObject* targe
     if (target == this)
         return true;
 
+    float dx = target->GetPositionX() - x;
+    float dy = target->GetPositionY() - y;
+    if (dx * dx + dy * dy < 0.0001f)
+        return true;
+
     // move arc to range 0.. 2*pi
     arc = MapManager::NormalizeOrientation(arc);
 
