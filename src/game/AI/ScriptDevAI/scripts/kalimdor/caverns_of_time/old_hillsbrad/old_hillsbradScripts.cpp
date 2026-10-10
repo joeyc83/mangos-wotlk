@@ -913,7 +913,7 @@ struct npc_thrall_old_hillsbradAI : public npc_escortAI, private DialogueHelper
                 SetEscortPaused(true);
                 break;
             case 126:
-                m_creature->SetActiveObjectState(false);
+                m_creature->ForcedDespawn();
                 break;
         }
     }
@@ -1215,7 +1215,10 @@ struct npc_tarethaAI : public npc_escortAI, private DialogueHelper
                 if (Creature* pThrall = m_pInstance->GetSingleCreatureFromStorage(NPC_THRALL))
                 {
                     if (npc_thrall_old_hillsbradAI* pThrallAI = dynamic_cast<npc_thrall_old_hillsbradAI*>(pThrall->AI()))
+                    {
+                        pThrallAI->SetRun();
                         pThrallAI->SetEscortPaused(false);
+                    }
                 }
                 break;
             case SAY_TA_FAREWELL:
