@@ -291,7 +291,7 @@ bool Quest::IsSeasonal() const
 
 bool Quest::IsAllowedInRaid() const
 {
-    if (Type == QUEST_TYPE_RAID || Type == QUEST_TYPE_RAID_10 || Type == QUEST_TYPE_RAID_25)
+    if (Type == QUEST_TYPE_RAID || Type == QUEST_TYPE_RAID_10 || Type == QUEST_TYPE_RAID_25 || Type == QUEST_TYPE_PVP)
         return true;
 
     return sWorld.getConfig(CONFIG_BOOL_QUEST_IGNORE_RAID);
