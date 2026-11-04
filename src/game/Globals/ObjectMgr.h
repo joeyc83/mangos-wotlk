@@ -756,6 +756,7 @@ class ObjectMgr
         void LoadGameObjectSpawnEntry();
         void LoadGameObjectTemplateAddons();
         void LoadItemPrototypes();
+        bool IsOnStoreSpell(uint32 spellId) const { return m_onStoreSpells.find(spellId) != m_onStoreSpells.end(); }
         void LoadItemConverts();
         void LoadItemExpireConverts();
         void LoadItemRequiredTarget();
@@ -1358,6 +1359,7 @@ class ObjectMgr
         typedef std::unordered_map<uint32, uint32> QuestAreaTriggerMap;
         typedef std::set<uint32> TavernAreaTriggerSet;
         typedef std::set<uint32> GameObjectForQuestSet;
+        typedef std::set<uint32> OnStoreSpellSet;
 
         typedef std::multimap<uint32, CreatureModelRace> CreatureModelRaceMap;
         typedef std::pair<CreatureModelRaceMap::const_iterator, CreatureModelRaceMap::const_iterator> CreatureModelRaceMapBounds;
@@ -1368,6 +1370,7 @@ class ObjectMgr
         QuestAreaTriggerMap mQuestAreaTriggerMap;
         TavernAreaTriggerSet mTavernAreaTriggerSet;
         GameObjectForQuestSet mGameObjectForQuestSet;
+        OnStoreSpellSet     m_onStoreSpells;
         GossipTextMap       mGossipText;
         AreaTriggerMap      mAreaTriggers;
 
