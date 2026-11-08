@@ -481,7 +481,7 @@ bool WorldSocket::HandleAuthSession(WorldPacket& recvPacket)
     // (in particular an empty string, which SetHexStr turns into 0) must not be accepted
     // as it would let the session proof be computed without knowing the real key.
     std::string sessionKeyStr = fields[2].GetString();
-    if (sessionKeyStr.size() != 80)
+    if (sessionKeyStr.empty() || sessionKeyStr.size() > 80)
     {
         WorldPacket packet(SMSG_AUTH_RESPONSE, 1);
         packet << uint8(AUTH_FAILED);
