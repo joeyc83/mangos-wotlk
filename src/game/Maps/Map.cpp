@@ -252,11 +252,18 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId, uint8 SpawnMode)
       m_VisibleDistance(DEFAULT_VISIBILITY_DISTANCE), m_persistentState(nullptr),
       m_activeNonPlayersIter(m_activeNonPlayers.end()), m_onEventNotifiedIter(m_onEventNotifiedObjects.end()),
       i_gridExpiry(expiry), m_TerrainData(sTerrainMgr.LoadTerrain(id)),
-      i_data(nullptr), i_script_id(0), m_transportsIterator(m_transports.begin()), m_defaultLight(GetDefaultMapLight(id)), m_spawnManager(*this),
+      i_data(nullptr), i_script_id(0),
+      m_CreatureGuids(HIGHGUID_UNIT, id, InstanceId, [this](ObjectGuid const& guid) { return GetCreature(guid) != nullptr; }),
+      m_GameObjectGuids(HIGHGUID_GAMEOBJECT, id, InstanceId, [this](ObjectGuid const& guid) { return GetGameObject(guid) != nullptr; }),
+      m_DynObjectGuids(HIGHGUID_DYNAMICOBJECT, id, InstanceId, [this](ObjectGuid const& guid) { return GetDynamicObject(guid) != nullptr; }),
+      m_PetGuids(HIGHGUID_PET, id, InstanceId, [this](ObjectGuid const& guid) { return GetPet(guid) != nullptr; }),
+      m_VehicleGuids(HIGHGUID_VEHICLE, id, InstanceId, [this](ObjectGuid const& guid) { return GetCreature(guid) != nullptr; }),
+      m_transportGuids(HIGHGUID_MO_TRANSPORT, id, InstanceId, [this](ObjectGuid const& guid) { return GetTransport(guid) != nullptr; }),
+      m_transportsIterator(m_transports.begin()), m_defaultLight(GetDefaultMapLight(id)), m_spawnManager(*this),
 #ifdef ENABLE_PLAYERBOTS
       m_activeZonesTimer(0), hasRealPlayers(false),
 #endif      
-      m_variableManager(this)
+      m_variableManager(this), m_outdoorPvpMgr(*this)
 {
     m_weatherSystem = new WeatherSystem(this);
     m_transportGuids.Set(sMapMgr.GetTransportCounter());
@@ -311,6 +318,8 @@ void Map::Initialize(std::mutex* mmapMutex, bool loadInstanceData /*= true*/)
     sObjectMgr.LoadLargeEntities(this);
 
     LoadTransports();
+
+    m_outdoorPvpMgr.InitOutdoorPvP();
 }
 
 void Map::InitVisibilityDistance()
@@ -1157,6 +1166,8 @@ void Map::Update(const uint32& t_diff)
 
     if (i_data)
         i_data->Update(t_diff);
+
+    m_outdoorPvpMgr.Update(t_diff);
 
     // Send world objects and item update field changes
     if (IsUpdateObjectTick())
@@ -2626,7 +2637,7 @@ bool Map::StartEvent(uint32 eventId, Object* source, Object* target, bool isStar
         if (IsBattleGroundOrArena())
             bg = static_cast<BattleGroundMap*>(this)->GetBG();
         else // Use the go, because GOs don't move
-            opvp = sOutdoorPvPMgr.GetScript(zoneId);
+            opvp = m_outdoorPvpMgr.GetScript(zoneId);
 
         if (bg && bg->HandleEvent(eventId, source, target))
             return true;
@@ -3142,23 +3153,24 @@ void Map::AddCameraToWorld(WorldObject* obj)
     obj->GetViewPoint().Event_AddedToWorld(&(*grid)(cell.CellX(), cell.CellY()), nullptr);
 }
 
-uint32 Map::GenerateLocalLowGuid(HighGuid guidhigh)
+uint32 Map::GenerateLocalLowGuid(HighGuid guidhigh, uint32 entry /*= 0*/)
 {
-    // TODO: for map local guid counters possible force reload map instead shutdown server at guid counter overflow
+    // Creature, gameobject and pet counters wrap around instead of running out (see MapGuidAllocator);
+    // vehicles and transports are unchanged
     switch (guidhigh)
     {
         case HIGHGUID_UNIT:
-            return m_CreatureGuids.Generate();
+            return m_CreatureGuids.Generate(entry);
         case HIGHGUID_GAMEOBJECT:
-            return m_GameObjectGuids.Generate();
+            return m_GameObjectGuids.Generate(entry);
         case HIGHGUID_DYNAMICOBJECT:
-            return m_DynObjectGuids.Generate();
+            return m_DynObjectGuids.Generate(entry);
         case HIGHGUID_PET:
-            return m_PetGuids.Generate();
+            return m_PetGuids.Generate(entry);
         case HIGHGUID_VEHICLE:
-            return m_VehicleGuids.Generate();
+            return m_VehicleGuids.Generate(entry);
         case HIGHGUID_MO_TRANSPORT:
-            return m_transportGuids.Generate();
+            return m_transportGuids.Generate(entry);
         default:
             MANGOS_ASSERT(false);
             return 0;

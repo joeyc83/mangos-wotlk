@@ -60,6 +60,14 @@ void SendNoPathToOwner(Unit* pet)
     pet->SendPetActionFeedback(FEEDBACK_NO_PATH);
 }
 
+static bool IsSpellAimedAtEnemy(SpellEntry const* spellInfo)
+{
+    for (uint32 target : spellInfo->EffectImplicitTargetA)
+        if (IsUnitTargetTarget(target) && IsHostileTarget(target))
+            return true;
+    return false;
+}
+
 void WorldSession::HandlePetAction(WorldPacket& recv_data)
 {
     ObjectGuid petGuid;
@@ -316,6 +324,7 @@ void WorldSession::HandlePetActionHelper(uint8 flag, uint32 spellid, Unit* petUn
                         petUnit->AttackStop(true, true);
                         charmInfo->SetSpellOpener();
                     }
+                    [[fallthrough]];
                 }
                 case REACT_DEFENSIVE:                       // recovery
                 case REACT_AGGRESSIVE:                      // activete
@@ -370,6 +379,11 @@ void WorldSession::HandlePetActionHelper(uint8 flag, uint32 spellid, Unit* petUn
 
             if (!IsSpellRequireTarget(spellInfo))
                 unit_target = nullptr;
+            else if (!unit_target && IsSpellAimedAtEnemy(spellInfo))
+            {
+                petUnit->SendPetActionFeedback(FEEDBACK_NOTHING_TO_ATT, spellid);
+                return;
+            }
 
             if (unit_target && !(petUnit->IsWithinDistInMap(unit_target, sRange->maxRange) && petUnit->IsWithinLOSInMap(unit_target, true))
                     && petUnit->CanAttackNow(unit_target))
@@ -649,13 +663,6 @@ void WorldSession::HandlePetRename(WorldPacket& recv_data)
         return;
     }
 
-    pet->SetName(name);
-
-    if (_player->GetGroup())
-        _player->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_NAME);
-
-    pet->RemoveByteFlag(UNIT_FIELD_BYTES_2, UNIT_BYTES_2_OFFSET_PET_FLAGS, UNIT_CAN_BE_RENAMED);
-
     if (isdeclined)
     {
         for (auto& i : declinedname.name)
@@ -671,6 +678,13 @@ void WorldSession::HandlePetRename(WorldPacket& recv_data)
             return;
         }
     }
+
+    pet->SetName(name);
+
+    if (_player->GetGroup())
+        _player->SetGroupUpdateFlag(GROUP_UPDATE_FLAG_PET_NAME);
+
+    pet->RemoveByteFlag(UNIT_FIELD_BYTES_2, UNIT_BYTES_2_OFFSET_PET_FLAGS, UNIT_CAN_BE_RENAMED);
 
     CharacterDatabase.BeginTransaction();
     if (isdeclined)

@@ -45,6 +45,7 @@
 #include "../../Spells/Spell.h"
 #include "../../Spells/SpellAuras.h"
 #include "../../Spells/SpellMgr.h"
+#include "../../Spells/SpellStacking.h"
 #include "../../Tools/Language.h"
 #include "../../World/World.h"
 
@@ -1280,6 +1281,7 @@ bool PlayerbotAI::IsItemUseful(uint32 itemid)
         case ITEM_CLASS_QUEST:
             if (!HasCollectFlag(COLLECT_FLAG_QUEST))
                 break;
+            [[fallthrough]];
         case ITEM_CLASS_KEY:
             return true;
         case ITEM_CLASS_GEM:
@@ -1392,6 +1394,7 @@ bool PlayerbotAI::IsItemUseful(uint32 itemid)
                 default:
                     break;
             }
+            [[fallthrough]];
         }
         default:
             break;
@@ -1651,37 +1654,39 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             WorldPacket p(packet); // 8+4+4+1
             ObjectGuid vendorguid;
             p >> vendorguid;
-            uint32 itemid;
-            p >> itemid;
+            uint32 vendorSlot;
+            p >> vendorSlot;
             uint8 msg;
             p >> msg; // error msg
             p.resize(13);
 
-            switch (msg)
+            switch (BuyResult(msg))
             {
-                case BUY_ERR_CANT_FIND_ITEM:
+                case BuyResult::CANT_FIND_ITEM:
                     break;
-                case BUY_ERR_ITEM_ALREADY_SOLD:
+                case BuyResult::ITEM_ALREADY_SOLD:
                     break;
-                case BUY_ERR_NOT_ENOUGHT_MONEY:
+                case BuyResult::NOT_ENOUGHT_MONEY:
                 {
                     Announce(CANT_AFFORD);
                     break;
                 }
-                case BUY_ERR_SELLER_DONT_LIKE_YOU:
+                case BuyResult::SELLER_DONT_LIKE_YOU:
                     break;
-                case BUY_ERR_DISTANCE_TOO_FAR:
+                case BuyResult::DISTANCE_TOO_FAR:
                     break;
-                case BUY_ERR_ITEM_SOLD_OUT:
+                case BuyResult::SILENT_ERROR:
                     break;
-                case BUY_ERR_CANT_CARRY_MORE:
+                case BuyResult::ITEM_SOLD_OUT:
+                    break;
+                case BuyResult::CANT_CARRY_MORE:
                 {
                     Announce(INVENTORY_FULL);
                     break;
                 }
-                case BUY_ERR_RANK_REQUIRE:
+                case BuyResult::RANK_REQUIRE:
                     break;
-                case BUY_ERR_REPUTATION_REQUIRE:
+                case BuyResult::REPUTATION_REQUIRE:
                     break;
             }
             return;
@@ -2099,7 +2104,9 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             //4 == TRADE_STATUS_TRADE_ACCEPT
             if (status == 4)
             {
-                m_bot->GetSession()->HandleAcceptTradeOpcode(p);  // packet not used
+                WorldPacket accept(CMSG_ACCEPT_TRADE, 4);
+                accept << uint32(m_bot->GetTradeData()->GetTraderData()->GetServerStateIndex());
+                m_bot->GetSession()->HandleAcceptTradeOpcode(accept);
                 SetQuestNeedItems();
                 AutoUpgradeEquipment();
             }
@@ -5703,15 +5710,20 @@ SpellCastResult PlayerbotAI::SelfBuff(uint32 spellId)
 }
 
 // Checks if spell is single per target per caster and will make any effect on target
-bool PlayerbotAI::CanReceiveSpecificSpell(uint8 spec, Unit* target) const
+bool PlayerbotAI::CanReceiveSpecificSpell(uint32 spellId, Unit* target) const
 {
-    if (IsSpellSpecificUniquePerCaster(SpellSpecific(spec)))
+    SpellGroupSpellData const* data = sSpellStacker.GetSpellGroupDataForSpell(spellId);
+    if (!data || data->rule != SpellGroupRule::UNIQUE_PER_CASTER)
+        return true;
+
+    for (auto const& holder : target->GetSpellAuraHolderMap())
     {
-        Unit::SpellAuraHolderMap holders = target->GetSpellAuraHolderMap();
-        Unit::SpellAuraHolderMap::iterator it;
-        for (it = holders.begin(); it != holders.end(); ++it)
-            if ((*it).second->GetCasterGuid() == m_bot->GetObjectGuid() && GetSpellSpecific((*it).second->GetId()) == SpellSpecific(spec))
-                return false;
+        if (holder.second->GetCasterGuid() != m_bot->GetObjectGuid())
+            continue;
+
+        SpellGroupSpellData const* existingData = sSpellStacker.GetSpellGroupDataForSpell(holder.second->GetId());
+        if (existingData && (data->mask & existingData->mask) != 0)
+            return false;
     }
     return true;
 }
@@ -7952,13 +7964,14 @@ void PlayerbotAI::EquipItem(Item* src_Item)
 
         // check dest->src move possibility
         ItemPosCountVec sSrc;
+        uint8 bagSlot = 0;
         if (m_bot->IsInventoryPos(src))
         {
-            msg = m_bot->CanStoreItem(src_bagIndex, src_slot, sSrc, dest_Item, true);
+            msg = m_bot->CanStoreItem(src_bagIndex, src_slot, sSrc, dest_Item, bagSlot, true);
             if (msg != EQUIP_ERR_OK)
-                msg = m_bot->CanStoreItem(src_bagIndex, NULL_SLOT, sSrc, dest_Item, true);
+                msg = m_bot->CanStoreItem(src_bagIndex, NULL_SLOT, sSrc, dest_Item, bagSlot, true);
             if (msg != EQUIP_ERR_OK)
-                msg = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, sSrc, dest_Item, true);
+                msg = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, sSrc, dest_Item, bagSlot, true);
         }
 
         if (msg != EQUIP_ERR_OK)
@@ -8194,7 +8207,8 @@ bool PlayerbotAI::Withdraw(const uint32 itemid)
         std::ostringstream report;
 
         ItemPosCountVec dest;
-        InventoryResult msg = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, pItem, false);
+        uint8 bagSlot = 0;
+        InventoryResult msg = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, pItem, bagSlot, false);
         if (msg != EQUIP_ERR_OK)
         {
             m_bot->SendEquipError(msg, pItem, nullptr);
@@ -8220,7 +8234,8 @@ bool PlayerbotAI::Deposit(const uint32 itemid)
         std::ostringstream report;
 
         ItemPosCountVec dest;
-        InventoryResult msg = m_bot->CanBankItem(NULL_BAG, NULL_SLOT, dest, pItem, false);
+        uint8 bagSlot = 0;
+        InventoryResult msg = m_bot->CanBankItem(NULL_BAG, NULL_SLOT, dest, pItem, false, bagSlot);
         if (msg != EQUIP_ERR_OK)
         {
             m_bot->SendEquipError(msg, pItem, nullptr);
@@ -10032,8 +10047,9 @@ void PlayerbotAI::_HandleCommandMail(std::string& text, Player& fromPlayer)
                     }
 
                     ItemPosCountVec dest;
+                    uint8 bagSlot = 0;
 
-                    InventoryResult res = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, item, false);
+                    InventoryResult res = m_bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, item, bagSlot, false);
                     if (res == EQUIP_ERR_OK)
                     {
                         m->removedItems.push_back(itr->item_guid);
@@ -11666,10 +11682,11 @@ void PlayerbotAI::_HandleCommandSkill(std::string& text, Player& fromPlayer)
                     break;
 
                 uint32 reqLevel = 0;
-                if (!tSpell->learnedSpell && !m_bot->IsSpellFitByClassAndRace(tSpell->learnedSpell, &reqLevel))
+                uint32 learnedSpell = tSpell->learnedSpell.size() > 1 ? tSpell->learnedSpell[1] : tSpell->learnedSpell[0];
+                if (!learnedSpell || !m_bot->IsSpellFitByClassAndRace(learnedSpell, &reqLevel))
                     continue;
 
-                if (sSpellMgr.IsPrimaryProfessionFirstRankSpell(tSpell->learnedSpell) && m_bot->HasSpell(tSpell->learnedSpell))
+                if (sSpellMgr.IsPrimaryProfessionFirstRankSpell(learnedSpell) && m_bot->HasSpell(learnedSpell))
                     continue;
 
                 reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);
@@ -11806,10 +11823,11 @@ bool PlayerbotAI::_HandleCommandSkillLearnHelper(TrainerSpell const* tSpell, uin
         return false;
 
     uint32 reqLevel = 0;
-    if (!tSpell->learnedSpell && !m_bot->IsSpellFitByClassAndRace(tSpell->learnedSpell, &reqLevel))
+    uint32 learnedSpell = tSpell->learnedSpell.size() > 1 ? tSpell->learnedSpell[1] : tSpell->learnedSpell[0];
+    if (!learnedSpell || !m_bot->IsSpellFitByClassAndRace(learnedSpell, &reqLevel))
         return false;
 
-    if (sSpellMgr.IsPrimaryProfessionFirstRankSpell(tSpell->learnedSpell) && m_bot->HasSpell(tSpell->learnedSpell))
+    if (sSpellMgr.IsPrimaryProfessionFirstRankSpell(learnedSpell) && m_bot->HasSpell(learnedSpell))
         return false;
 
     reqLevel = tSpell->isProvidedReqLevel ? tSpell->reqLevel : std::max(reqLevel, tSpell->reqLevel);

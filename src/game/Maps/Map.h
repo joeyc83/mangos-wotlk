@@ -38,8 +38,10 @@
 #include "Globals/GraveyardManager.h"
 #include "Maps/SpawnManager.h"
 #include "Maps/MapDataContainer.h"
+#include "Maps/MapGuidAllocator.h"
 #include "Util/UniqueTrackablePtr.h"
 #include "World/WorldStateVariableManager.h"
+#include "OutdoorPvP/OutdoorPvPMgr.h"
 
 #include <bitset>
 #include <functional>
@@ -124,6 +126,14 @@ struct ZoneDynamicInfo
 #define UPDATE_TICK         400
 
 typedef std::unordered_map<uint32 /*zoneId*/, ZoneDynamicInfo> ZoneDynamicInfoMap;
+
+enum class WorldMaps
+{
+    EASTERN_KINGDOMS    = 0,
+    KALIMDOR            = 1,
+    OUTLAND             = 530,
+    NORTHREND           = 571
+};
 
 class Map : public GridRefManager<NGridType>
 {
@@ -359,8 +369,9 @@ class Map : public GridRefManager<NGridType>
 
         void AddCameraToWorld(WorldObject* obj);
 
-        // DynObjects currently
-        uint32 GenerateLocalLowGuid(HighGuid guidhigh);
+        // entry: the one written in the guid (the pet number for pets), not used for dynamic objects
+        // Stops the server if no counter is free for this entry after a full round (see MapGuidAllocator)
+        uint32 GenerateLocalLowGuid(HighGuid guidhigh, uint32 entry = 0);
 
         // get corresponding TerrainData object for this particular map
         const TerrainInfo* GetTerrain() const { return m_TerrainData; }
@@ -475,6 +486,9 @@ class Map : public GridRefManager<NGridType>
         void AddWaypointingNpc(Unit* npc);
         void RemoveWaypointingNpc(Unit* npc);
 
+        OutdoorPvPMgr& GetOutdoorPvPMgr() { return m_outdoorPvpMgr; }
+        OutdoorPvPMgr const& GetOutdoorPvPMgr() const { return m_outdoorPvpMgr; }
+
         void UpdateInfinite(Player& player, UpdateData& updateData, GuidSet& clientGUIDs, WorldObjectSet& visibleNow) const;
 
     private:
@@ -574,12 +588,15 @@ class Map : public GridRefManager<NGridType>
         uint32 i_script_id;
 
         // Map local low guid counters
-        ObjectGuidGenerator<HIGHGUID_UNIT> m_CreatureGuids;
-        ObjectGuidGenerator<HIGHGUID_GAMEOBJECT> m_GameObjectGuids;
-        ObjectGuidGenerator<HIGHGUID_DYNAMICOBJECT> m_DynObjectGuids;
-        ObjectGuidGenerator<HIGHGUID_PET> m_PetGuids;
-        ObjectGuidGenerator<HIGHGUID_VEHICLE> m_VehicleGuids;
-        ObjectGuidGenerator<HIGHGUID_MO_TRANSPORT> m_transportGuids;
+        MapGuidAllocator m_CreatureGuids;
+        MapGuidAllocator m_GameObjectGuids;
+        MapGuidAllocator m_DynObjectGuids;
+        MapGuidAllocator m_PetGuids;
+        // CreatureInfo::GetHighGuid() returns HIGHGUID_VEHICLE for creatures with a VehicleTemplateId,
+        // so these do go through GenerateLocalLowGuid() like any other creature; GetCreature() finds them
+        // (Map::GetAnyTypeCreature() routes HIGHGUID_VEHICLE there too).
+        MapGuidAllocator m_VehicleGuids;
+        MapGuidAllocator m_transportGuids;
 
         // Type specific code for add/remove to/from grid
         template<class T>
@@ -618,6 +635,7 @@ class Map : public GridRefManager<NGridType>
         std::shared_ptr<CreatureSpellListContainer> m_spellListContainer;
 
         WorldStateVariableManager m_variableManager;
+        OutdoorPvPMgr m_outdoorPvpMgr;
 
 #ifdef ENABLE_PLAYERBOTS
         std::vector<uint32> m_activeZones;

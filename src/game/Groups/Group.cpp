@@ -42,16 +42,17 @@ extern Config botConfig;
 
 GroupMemberStatus GetGroupMemberStatus(const Player* member = nullptr)
 {
-    uint8 flags = MEMBER_STATUS_OFFLINE;
+    uint16 flags = MEMBER_STATUS_OFFLINE;
     if (member && member->GetSession() && !member->GetSession()->PlayerLogout())
     {
         flags |= MEMBER_STATUS_ONLINE;
         if (member->IsPvP())
             flags |= MEMBER_STATUS_PVP;
-        if (member->IsDead())
-            flags |= MEMBER_STATUS_DEAD;
+        // a released member keeps the corpse death state, but it is a ghost, not dead
         if (member->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
             flags |= MEMBER_STATUS_GHOST;
+        else if (member->IsDead())
+            flags |= MEMBER_STATUS_DEAD;
         if (member->IsPvPFreeForAll())
             flags |= MEMBER_STATUS_PVP_FFA;
         if (!member->IsInWorld())
@@ -60,6 +61,8 @@ GroupMemberStatus GetGroupMemberStatus(const Player* member = nullptr)
             flags |= MEMBER_STATUS_AFK;
         if (member->isDND())
             flags |= MEMBER_STATUS_DND;
+        if (member->IsBoarded())
+            flags |= MEMBER_STATUS_VEHICLE;
     }
     return GroupMemberStatus(flags);
 }

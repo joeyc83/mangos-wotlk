@@ -26,6 +26,8 @@
 
 class Group;
 class BattlefieldWG;
+class Map;
+class OutdoorPvPMgr;
 
 enum
 {
@@ -670,7 +672,7 @@ class WintergraspPlayer : public BattlefieldPlayer
 class BattlefieldWG : public Battlefield
 {
     public:
-        BattlefieldWG();
+        BattlefieldWG(Map& map, OutdoorPvPMgr& mgr);
 
         void Reset() override;
 
@@ -737,7 +739,7 @@ class BattlefieldWG : public Battlefield
         bool HandleDestructibleBuildingEvent(uint32 eventId, GameObject* go, Unit* invoker);
 
         // handle lock / unlock of the workshops
-        void LockWorkshops(bool lock, const WorldObject* objRef, WintergraspFactory* workshop);
+        void LockWorkshops(bool lock, const WorldObject* objRef, WintergraspFactory& workshop);
 
         // battlefield reset before and after the battle
         void GetBattlefieldReady(const WorldObject* objRef);
@@ -779,12 +781,12 @@ class BattlefieldWG : public Battlefield
         ObjectGuid m_fortressDoorWallGuid;
 
         // buildings
-        std::vector<BattlefieldBuilding*> m_keepBuildings;
-        std::vector<BattlefieldBuilding*> m_defenseTowers;
-        std::vector<BattlefieldBuilding*> m_offenseTowers;
+        std::vector<BattlefieldBuilding> m_keepBuildings;
+        std::vector<BattlefieldBuilding> m_defenseTowers;
+        std::vector<BattlefieldBuilding> m_offenseTowers;
 
-        std::vector<WintergraspFactory*> m_defenseWorkshops;
-        std::vector<WintergraspFactory*> m_capturableWorkshops;
+        std::vector<WintergraspFactory> m_defenseWorkshops;
+        std::vector<WintergraspFactory> m_capturableWorkshops;
 
         // guid lists
         GuidList m_defenseCannonsGuids;

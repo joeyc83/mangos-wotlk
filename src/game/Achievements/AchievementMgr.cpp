@@ -420,7 +420,7 @@ bool AchievementCriteriaRequirement::Meets(uint32 criteria_id, Player const* sou
             if (!source->IsInWorld())
                 return false;
 
-            if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(source->GetCachedZoneId()))
+            if (OutdoorPvP* outdoorPvP = source->GetMap()->GetOutdoorPvPMgr().GetScript(source->GetCachedZoneId()))
                 return outdoorPvP->CheckAchievementCriteriaMeet(criteria_id, source, target, miscvalue1);
             else if (source->InBattleGround())
             {
@@ -2691,6 +2691,7 @@ void AchievementGlobalMgr::LoadAchievementCriteriaRequirements()
                     default:
                         continue;
                 }
+                [[fallthrough]];
             }
             case ACHIEVEMENT_CRITERIA_TYPE_FALL_WITHOUT_DYING:
                 break;                                      // any cases

@@ -27,6 +27,11 @@
 #include <map>
 #include <World/WorldStateDefines.h>
 #include "AI/ScriptDevAI/scripts/world/scourge_invasion.h"
+#include "OutdoorPvP/OutdoorPvPEP.h"
+#include "OutdoorPvP/OutdoorPvPSI.h"
+#include "OutdoorPvP/OutdoorPvPZM.h"
+#include "OutdoorPvP/OutdoorPvPTF.h"
+#include "OutdoorPvP/OutdoorPvPHP.h"
 
 enum
 {
@@ -499,6 +504,63 @@ void WorldState::HandlePlayerEnterZone(Player* player, uint32 zoneId)
         default:
             break;
     }
+
+    switch (zoneId)
+    {
+        case ZONE_ID_TEMPLE_OF_AQ:
+        case ZONE_ID_RUINS_OF_AQ:
+        case ZONE_ID_GATES_OF_AQ:
+        case ZONE_ID_STRATHOLME:
+        case ZONE_ID_SCHOLOMANCE:
+        case ZONE_ID_HELLFIRE_RAMPARTS:
+        case ZONE_ID_HELLFIRE_CITADEL:
+        case ZONE_ID_BLOOD_FURNACE:
+        case ZONE_ID_SHATTERED_HALLS:
+        case ZONE_ID_STEAMVAULT:
+        case ZONE_ID_UNDERBOG:
+        case ZONE_ID_SLAVE_PENS:
+        case ZONE_ID_SHADOW_LABYRINTH:
+        case ZONE_ID_AUCHENAI_CRYPTS:
+        case ZONE_ID_SETHEKK_HALLS:
+        case ZONE_ID_MANA_TOMBS:
+        {
+            std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+            m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId].push_back(player->GetObjectGuid());
+
+            switch (zoneId) // so that we keep the mutex lock
+            {
+                case ZONE_ID_TEMPLE_OF_AQ:
+                case ZONE_ID_RUINS_OF_AQ:
+                case ZONE_ID_GATES_OF_AQ:
+                    OutdoorPvPSI::BuffPlayer(player, m_outdoorPvpStateData.silithusZoneOwner);
+                    break;
+                case ZONE_ID_STRATHOLME:
+                case ZONE_ID_SCHOLOMANCE:
+                    OutdoorPvPEP::BuffPlayer(player, m_outdoorPvpStateData.eplTowersAlliance, m_outdoorPvpStateData.eplTowersHorde);
+                    break;
+                case ZONE_ID_HELLFIRE_RAMPARTS:
+                case ZONE_ID_HELLFIRE_CITADEL:
+                case ZONE_ID_BLOOD_FURNACE:
+                case ZONE_ID_SHATTERED_HALLS:
+                    OutdoorPvPHP::BuffPlayer(player, m_outdoorPvpStateData.hellfireZoneOwner);
+                    break;
+                case ZONE_ID_STEAMVAULT:
+                case ZONE_ID_UNDERBOG:
+                case ZONE_ID_SLAVE_PENS:
+                    OutdoorPvPZM::BuffPlayer(player, m_outdoorPvpStateData.zangarGraveyardOwner);
+                    break;
+                case ZONE_ID_SHADOW_LABYRINTH:
+                case ZONE_ID_AUCHENAI_CRYPTS:
+                case ZONE_ID_SETHEKK_HALLS:
+                case ZONE_ID_MANA_TOMBS:
+                    OutdoorPvPTF::BuffPlayer(player, m_outdoorPvpStateData.terokkarZoneOwner);
+                    break;
+            }
+
+            break;
+        }
+    }
+
     if (IsHolidayActive(HOLIDAY_FIRE_FESTIVAL)) // On midsummer starting, players can end up without buff but with bonfire in zone - keeping like this for simplicity and optimization
     {
         if (player->GetMap()->IsContinent())
@@ -581,6 +643,64 @@ void WorldState::HandlePlayerLeaveZone(Player* player, uint32 zoneId)
         default:
             break;
     }
+
+    switch (zoneId)
+    {
+        case ZONE_ID_TEMPLE_OF_AQ:
+        case ZONE_ID_RUINS_OF_AQ:
+        case ZONE_ID_GATES_OF_AQ:
+        case ZONE_ID_STRATHOLME:
+        case ZONE_ID_SCHOLOMANCE:
+        case ZONE_ID_HELLFIRE_RAMPARTS:
+        case ZONE_ID_HELLFIRE_CITADEL:
+        case ZONE_ID_BLOOD_FURNACE:
+        case ZONE_ID_SHATTERED_HALLS:
+        case ZONE_ID_STEAMVAULT:
+        case ZONE_ID_UNDERBOG:
+        case ZONE_ID_SLAVE_PENS:
+        case ZONE_ID_SHADOW_LABYRINTH:
+        case ZONE_ID_AUCHENAI_CRYPTS:
+        case ZONE_ID_SETHEKK_HALLS:
+        case ZONE_ID_MANA_TOMBS:
+        {
+            std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+            auto position = std::find(m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId].begin(), m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId].end(), player->GetObjectGuid());
+            if (position != m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId].end())
+                m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId].erase(position);
+
+            switch (zoneId) // so that we keep the mutex lock
+            {
+                case ZONE_ID_TEMPLE_OF_AQ:
+                case ZONE_ID_RUINS_OF_AQ:
+                case ZONE_ID_GATES_OF_AQ:
+                    OutdoorPvPSI::UnBuffPlayer(player);
+                    break;
+                case ZONE_ID_STRATHOLME:
+                case ZONE_ID_SCHOLOMANCE:
+                    OutdoorPvPEP::UnBuffPlayer(player);
+                    break;
+                case ZONE_ID_HELLFIRE_RAMPARTS:
+                case ZONE_ID_HELLFIRE_CITADEL:
+                case ZONE_ID_BLOOD_FURNACE:
+                case ZONE_ID_SHATTERED_HALLS:
+                    OutdoorPvPHP::UnBuffPlayer(player);
+                    break;
+                case ZONE_ID_STEAMVAULT:
+                case ZONE_ID_UNDERBOG:
+                case ZONE_ID_SLAVE_PENS:
+                    OutdoorPvPZM::UnBuffPlayer(player);
+                    break;
+                case ZONE_ID_SHADOW_LABYRINTH:
+                case ZONE_ID_AUCHENAI_CRYPTS:
+                case ZONE_ID_SETHEKK_HALLS:
+                case ZONE_ID_MANA_TOMBS:
+                    OutdoorPvPTF::UnBuffPlayer(player);
+                    break;
+            }
+            break;
+        }
+    }
+
     if (IsHolidayActive(HOLIDAY_FIRE_FESTIVAL))
     {
         if (!player->IsInWorld() || player->GetMap()->IsContinent())
@@ -927,6 +1047,175 @@ static uint32 pathIds[4] =
 {
     1,0,0,0
 };
+
+void WorldState::SetEplTowerData(uint8 towersHorde, uint8 towersAlliance)
+{
+    std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+    Team affectedTeam = towersHorde != m_outdoorPvpStateData.eplTowersHorde ? HORDE : ALLIANCE;
+
+    m_outdoorPvpStateData.eplTowersHorde = towersHorde;
+    m_outdoorPvpStateData.eplTowersAlliance = towersAlliance;
+
+    uint32 zoneArray[] = { ZONE_ID_STRATHOLME, ZONE_ID_SCHOLOMANCE };
+
+    for (uint32 zoneId : zoneArray)
+    {
+        for (ObjectGuid& guid : m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId])
+        {
+            if (Player* player = sObjectMgr.GetPlayer(guid))
+            {
+                if (affectedTeam == ALLIANCE && player->GetTeam() == ALLIANCE)
+                {
+                    player->GetMap()->GetMessager().AddMessage([guid, towersHorde, towersAlliance](Map* map) -> void {
+                        if (Player* player = map->GetPlayer(guid))
+                        {
+                            OutdoorPvPEP::UnBuffPlayer(player);
+                            OutdoorPvPEP::BuffPlayer(player, towersAlliance, towersHorde);
+                        }
+                    });
+                }
+                if (affectedTeam == HORDE && player->GetTeam() == HORDE)
+                {
+                    player->GetMap()->GetMessager().AddMessage([guid, towersHorde, towersAlliance](Map* map) -> void {
+                        if (Player* player = map->GetPlayer(guid))
+                        {
+                            OutdoorPvPEP::UnBuffPlayer(player);
+                            OutdoorPvPEP::BuffPlayer(player, towersAlliance, towersHorde);
+                        }
+                    });
+                }
+            }
+        }
+    }
+}
+
+void WorldState::SetSilithusZoneOwner(Team zoneOwner)
+{
+    std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+    m_outdoorPvpStateData.silithusZoneOwner = zoneOwner;
+
+    uint32 zoneArray[] = {ZONE_ID_TEMPLE_OF_AQ, ZONE_ID_RUINS_OF_AQ, ZONE_ID_GATES_OF_AQ};
+
+    for (uint32 zoneId : zoneArray)
+    {
+        for (ObjectGuid& guid : m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId])
+        {
+            if (Player* player = sObjectMgr.GetPlayer(guid))
+            {
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPSI::UnBuffPlayer(player);
+                        OutdoorPvPSI::BuffPlayer(player, zoneOwner);
+                    }
+                });
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPSI::UnBuffPlayer(player);
+                        OutdoorPvPSI::BuffPlayer(player, zoneOwner);
+                    }
+                });
+            }
+        }
+    }
+}
+
+void WorldState::SetHellfireZoneOwner(Team zoneOwner)
+{
+    std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+    m_outdoorPvpStateData.hellfireZoneOwner = zoneOwner;
+
+    uint32 zoneArray[] = {ZONE_ID_HELLFIRE_RAMPARTS, ZONE_ID_BLOOD_FURNACE, ZONE_ID_SHATTERED_HALLS};
+
+    for (uint32 zoneId : zoneArray)
+    {
+        for (ObjectGuid& guid : m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId])
+        {
+            if (Player* player = sObjectMgr.GetPlayer(guid))
+            {
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPTF::UnBuffPlayer(player);
+                        OutdoorPvPTF::BuffPlayer(player, zoneOwner);
+                    }
+                });
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPTF::UnBuffPlayer(player);
+                        OutdoorPvPTF::BuffPlayer(player, zoneOwner);
+                    }
+                });
+            }
+        }
+    }
+}
+
+void WorldState::SetZangarmarshGraveyardOwner(Team graveyardOwner)
+{
+    std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+    m_outdoorPvpStateData.zangarGraveyardOwner = graveyardOwner;
+
+    uint32 zoneArray[] = {ZONE_ID_STEAMVAULT, ZONE_ID_UNDERBOG, ZONE_ID_SLAVE_PENS};
+
+    for (uint32 zoneId : zoneArray)
+    {
+        for (ObjectGuid& guid : m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId])
+        {
+            if (Player* player = sObjectMgr.GetPlayer(guid))
+            {
+                player->GetMap()->GetMessager().AddMessage([guid, graveyardOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPZM::UnBuffPlayer(player);
+                        OutdoorPvPZM::BuffPlayer(player, graveyardOwner);
+                    }
+                });
+                player->GetMap()->GetMessager().AddMessage([guid, graveyardOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPZM::UnBuffPlayer(player);
+                        OutdoorPvPZM::BuffPlayer(player, graveyardOwner);
+                    }
+                });
+            }
+        }
+    }
+}
+
+void WorldState::SetTerokkarZoneOwner(Team zoneOwner)
+{
+    std::lock_guard<std::mutex> guard(m_outdoorPvpStateData.outdoorPvpMutex);
+    m_outdoorPvpStateData.terokkarZoneOwner = zoneOwner;
+
+    uint32 zoneArray[] = {ZONE_ID_AUCHENAI_CRYPTS, ZONE_ID_SETHEKK_HALLS, ZONE_ID_MANA_TOMBS, ZONE_ID_SHADOW_LABYRINTH};
+
+    for (uint32 zoneId : zoneArray)
+    {
+        for (ObjectGuid& guid : m_outdoorPvpStateData.outdoorPvpZonePlayers[zoneId])
+        {
+            if (Player* player = sObjectMgr.GetPlayer(guid))
+            {
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPTF::UnBuffPlayer(player);
+                        OutdoorPvPTF::BuffPlayer(player, zoneOwner);
+                    }
+                });
+                player->GetMap()->GetMessager().AddMessage([guid, zoneOwner](Map* map) -> void {
+                    if (Player* player = map->GetPlayer(guid))
+                    {
+                        OutdoorPvPTF::UnBuffPlayer(player);
+                        OutdoorPvPTF::BuffPlayer(player, zoneOwner);
+                    }
+                });
+            }
+        }
+    }
+}
 
 bool WorldState::IsDragonSpawned(uint32 entry)
 {

@@ -290,7 +290,7 @@ void Spell::EffectSchoolDMG(SpellEffectIndex eff_idx)
                     case 35181:                             // Al'ar - Dive Bomb
                         if (unitTarget->GetObjectGuid() == m_targets.getUnitTargetGuid()) // summons two adds
                             unitTarget->CastSpell(nullptr, 39110, TRIGGERED_OLD_TRIGGERED);
-                    // [[fallthrough]]
+                        [[fallthrough]];
                     // Meteor like spells (divided damage to targets)
                     case 24340: case 26558: case 28884:     // Meteor
                     case 36837: case 38903: case 41276:     // Meteor
@@ -2819,6 +2819,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                     // remove player aura and despawn
                     unitTarget->GetOwner()->RemoveAurasDueToSpell(46233);
                     ((Creature*)unitTarget)->ForcedDespawn(5000);
+                    return;
                 }
                 case 46292:                                 // Cataclysm Breath
                 {
@@ -3812,6 +3813,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         return;
 
                     unitTarget->CastSpell(m_caster, 30253, TRIGGERED_OLD_TRIGGERED);
+                    return;
                 }
                 case 30284:                                 // Change Facing
                 {
@@ -4904,9 +4906,6 @@ void Spell::EffectHeal(SpellEffectIndex eff_idx)
                 holy = 0;
             addhealth += int32(ap * 0.15) + int32(holy * 15 / 100);
         }
-        // Death Pact (percent heal)
-        else if (m_spellInfo->Id == 48743)
-            addhealth = addhealth * unitTarget->GetMaxHealth() / 100;
         // Swiftmend - consumes Regrowth or Rejuvenation
         else if (m_spellInfo->TargetAuraState == AURA_STATE_SWIFTMEND && unitTarget->HasAuraState(AURA_STATE_SWIFTMEND))
         {
@@ -6032,7 +6031,7 @@ bool Spell::DoSummonCritter(CreatureSummonPositions& list, SummonPropertiesEntry
     Pet* critter = new Pet(MINI_PET);
 
 
-    if (!critter->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET), pos, cInfo, pet_entry))
+    if (!critter->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET, pet_entry), pos, cInfo, pet_entry))
     {
         sLog.outError("Spell::EffectSummonCritter, spellid %u: no such creature entry %u", m_spellInfo->Id, pet_entry);
         delete critter;
@@ -6120,7 +6119,7 @@ bool Spell::DoSummonGuardian(CreatureSummonPositions& list, SummonPropertiesEntr
         CreatureCreatePos pos(m_caster->GetMap(), itr.x, itr.y, itr.z, -m_caster->GetOrientation(), m_caster->GetPhaseMask());
 
         uint32 pet_number = sObjectMgr.GeneratePetNumber();
-        if (!spawnCreature->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET), pos, cInfo, pet_entry))
+        if (!spawnCreature->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET, pet_entry), pos, cInfo, pet_entry))
         {
             sLog.outError("Spell::DoSummonGuardian: can't create creature entry %u for spell %u.", pet_entry, m_spellInfo->Id);
             delete spawnCreature;
@@ -6238,7 +6237,7 @@ bool Spell::DoSummonTotem(CreatureSummonPositions& list, SpellEffectIndex eff_id
     Totem* pTotem = new Totem;
     list[0].creature = pTotem;
 
-    if (!pTotem->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_UNIT), pos, cinfo, m_caster))
+    if (!pTotem->Create(m_caster->GetMap()->GenerateLocalLowGuid(HIGHGUID_UNIT, cinfo->Entry), pos, cinfo, m_caster))
     {
         delete pTotem;
         return false;
@@ -6367,7 +6366,7 @@ bool Spell::DoSummonPet(CreatureSummonPositions& list, SummonPropertiesEntry con
 
     Map* map = m_caster->GetMap();
     uint32 pet_number = sObjectMgr.GeneratePetNumber();
-    if (!spawnCreature->Create(map->GenerateLocalLowGuid(HIGHGUID_PET), pos, cInfo, pet_number))
+    if (!spawnCreature->Create(map->GenerateLocalLowGuid(HIGHGUID_PET, pet_number), pos, cInfo, pet_number))
     {
         sLog.outErrorDb("Spell::EffectSummon: can't create creature with entry %u for spell %u", cInfo->Entry, m_spellInfo->Id);
         delete spawnCreature;
@@ -7161,7 +7160,7 @@ void Spell::EffectSummonPet(SpellEffectIndex eff_idx)
 
     Map* map = m_caster->GetMap();
     uint32 pet_number = sObjectMgr.GeneratePetNumber();
-    if (!NewSummon->Create(map->GenerateLocalLowGuid(HIGHGUID_PET), pos, cInfo, pet_number))
+    if (!NewSummon->Create(map->GenerateLocalLowGuid(HIGHGUID_PET, pet_number), pos, cInfo, pet_number))
     {
         delete NewSummon;
         return;
@@ -7660,7 +7659,7 @@ void Spell::EffectSummonObjectWild(SpellEffectIndex eff_idx)
         m_trueCaster->GetClosePoint(x, y, z, DEFAULT_WORLD_OBJECT_SIZE);
 
     Map* map = target->GetMap();
-    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, gameobject_id);
     if (!pGameObj->Create(lowGuid, lowGuid, gameobject_id, map,
                           m_trueCaster->GetPhaseMask(), x, y, z, target->GetOrientation()))
     {
@@ -8373,6 +8372,7 @@ void Spell::EffectScriptEffect(SpellEffectIndex eff_idx)
                 case 30629:                                 // Debris - Magtheridon
                 {
                     unitTarget->CastSpell(nullptr, 30630, TRIGGERED_OLD_TRIGGERED);
+                    return;
                 }               
                 case 30834:                                 // Infernal Relay
                 {
@@ -10528,7 +10528,7 @@ void Spell::EffectDuel(SpellEffectIndex eff_idx)
     float y = (m_caster->GetPositionY() + unitTarget->GetPositionY()) * 0.5f;
     float z = m_caster->GetPositionZ();
     m_caster->UpdateAllowedPositionZ(x, y, z);
-    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, gameobject_id);
     if (!pGameObj->Create(lowGuid, lowGuid, gameobject_id, map, m_caster->GetPhaseMask(), x, y, z, m_caster->GetOrientation()))
     {
         delete pGameObj;
@@ -11035,7 +11035,7 @@ void Spell::EffectSummonObject(SpellEffectIndex eff_idx)
         m_caster->GetClosePoint(x, y, z, DEFAULT_WORLD_OBJECT_SIZE);
 
     Map* map = m_caster->GetMap();
-    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = map->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, go_id);
     if (!pGameObj->Create(lowGuid, lowGuid, go_id, map,
                           m_caster->GetPhaseMask(), x, y, z, m_caster->GetOrientation()))
     {
@@ -11587,7 +11587,7 @@ void Spell::EffectTransmitted(SpellEffectIndex eff_idx)
     }
 
     GameObject* pGameObj = new GameObject;
-    uint32 lowGuid = cMap->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = cMap->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, name_id);
     if (!pGameObj->Create(lowGuid, lowGuid, name_id, cMap,
                           m_caster->GetPhaseMask(), fx, fy, fz, m_caster->GetOrientation()))
     {
@@ -12246,7 +12246,7 @@ void Spell::EffectCreateTamedPet(SpellEffectIndex eff_idx)
 
     Map* map = unitTarget->GetMap();
     uint32 petNumber = sObjectMgr.GeneratePetNumber();
-    if (!newTamedPet->Create(map->GenerateLocalLowGuid(HIGHGUID_PET), pos, cInfo, petNumber))
+    if (!newTamedPet->Create(map->GenerateLocalLowGuid(HIGHGUID_PET, petNumber), pos, cInfo, petNumber))
     {
         delete newTamedPet;
         return;

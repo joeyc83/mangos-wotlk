@@ -205,7 +205,7 @@ enum HitInfo
     HITINFO_GLANCING            = 0x00010000,
     HITINFO_CRUSHING            = 0x00020000,
     HITINFO_NOACTION            = 0x00040000,               // guessed
-    // 0x00080000
+    HITINFO_PVP                 = 0x00080000,               // always set if both attacker and victim are player controlled
     // 0x00100000
     HITINFO_SWINGNOHITSOUND     = 0x00200000,               // guessed
     // 0x00400000
@@ -1141,6 +1141,15 @@ struct SelectAttackingTargetParams
 struct SpellProcEventEntry;                                 // used only privately
 
 extern float baseMoveSpeed[MAX_MOVE_TYPE];
+
+enum SwingErrors
+{
+    SWING_ERROR_NONE,
+    SWING_ERROR_NOT_IN_RANGE,
+    SWING_ERROR_TARGET_NOT_ALIVE,
+    SWING_ERROR_BAD_FACING,
+    SWING_ERROR_CANT_ATTACK_TARGET,
+};
 
 class Unit : public WorldObject
 {
@@ -2245,6 +2254,7 @@ class Unit : public WorldObject
                 return itr->second;
             return 0;
         }
+        uint8 GetVisibleAuraFlags(uint8 slot) const;
         void SetVisibleAura(uint8 slot, uint32 spellid)
         {
             if (spellid == 0)
@@ -2280,6 +2290,7 @@ class Unit : public WorldObject
 
         int32 GetTotalAuraModifierByMiscValue(AuraType auratype, int32 misc_value) const;
         float GetTotalAuraMultiplierByMiscValue(AuraType auratype, int32 misc_value) const;
+        float GetTotalAuraMultiplierByMiscValueAB(AuraType auratype, int32 miscValue, int32 miscValueB) const;
         int32 GetMaxPositiveAuraModifierByMiscValue(AuraType auratype, int32 misc_value) const;
         int32 GetMaxNegativeAuraModifierByMiscValue(AuraType auratype, int32 misc_value) const;
 
@@ -2496,7 +2507,7 @@ class Unit : public WorldObject
         void ClearComboPointHolders();
 
         ///----------Pet responses methods-----------------
-        void SendPetActionFeedback(uint8 msg) const;
+        void SendPetActionFeedback(uint8 msg, uint32 spellId = 0) const;
         void SendPetTalk(uint32 pettalk) const;
         void SendPetAIReaction() const;
         void SendPetDismiss(uint32 soundId) const;

@@ -109,12 +109,10 @@ static const uint32 zangarmarshTowers[MAX_ZM_TOWERS] = {GO_ZANGA_BANNER_EAST, GO
 class OutdoorPvPZM : public OutdoorPvP
 {
     public:
-        OutdoorPvPZM();
+        OutdoorPvPZM(Map& map, OutdoorPvPMgr& mgr);
 
         void HandlePlayerEnterZone(Player* player, bool isMainZone) override;
         void HandlePlayerLeaveZone(Player* player, bool isMainZone) override;
-        void FillInitialWorldStates(WorldPacket& data, uint32& count) override;
-        void SendRemoveWorldStates(Player* player) override;
 
         bool HandleEvent(uint32 eventId, Object* source, Object* target) override;
 
@@ -126,6 +124,9 @@ class OutdoorPvPZM : public OutdoorPvP
 
         bool IsConditionFulfilled(Player const* source, uint32 conditionId, WorldObject const* conditionSource, uint32 conditionSourceType) override;
         void HandleConditionStateChange(uint32 conditionId, bool state) override;
+
+        static void BuffPlayer(Player* player, uint32 graveyardOwner);
+        static void UnBuffPlayer(Player* player);
 
     private:
         // process capture events

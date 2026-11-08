@@ -632,14 +632,6 @@ void Unit::EvadeTimerExpired()
     getThreatManager().SetTargetSuppressed(GetVictim());
 }
 
-enum SwingErrors
-{
-    SWING_ERROR_NOT_IN_RANGE,
-    SWING_ERROR_TARGET_NOT_ALIVE,
-    SWING_ERROR_BAD_FACING,
-    SWING_ERROR_CANT_ATTACK_TARGET,
-};
-
 bool Unit::UpdateMeleeAttackingState()
 {
     Unit* victim = GetVictim();
@@ -657,7 +649,7 @@ bool Unit::UpdateMeleeAttackingState()
     if (!isAttackReady(BASE_ATTACK) && !(isAttackReady(OFF_ATTACK) && hasOffhandWeaponForAttack()))
         return false;
 
-    uint8 swingError = 0;
+    uint8 swingError = SWING_ERROR_NONE;
     if (!CanReachWithMeleeAttack(victim))
         swingError = SWING_ERROR_NOT_IN_RANGE;
     else if (!HasInArc(victim, 2 * M_PI_F / 3))
@@ -693,8 +685,11 @@ bool Unit::UpdateMeleeAttackingState()
 
     if (swingError)
     {
-        setAttackTimer(BASE_ATTACK, 100);
-        setAttackTimer(OFF_ATTACK, 100);
+        // delaying a weapon that is not ready would make it ready sooner
+        if (isAttackReady(BASE_ATTACK))
+            setAttackTimer(BASE_ATTACK, 100);
+        if (hasOffhandWeaponForAttack() && isAttackReady(OFF_ATTACK))
+            setAttackTimer(OFF_ATTACK, 100);
     }
 
     Player* player = IsClientControlled() ? const_cast<Player*>(GetClientControlling()) : nullptr;
@@ -1272,7 +1267,7 @@ void Unit::Kill(Unit* killer, Unit* victim, DamageEffectType damagetype, SpellEn
             else if (victim != killer)
             {
                 // selfkills are not handled in outdoor pvp scripts
-                if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(playerVictim->GetCachedZoneId()))
+                if (OutdoorPvP* outdoorPvP = playerVictim->GetMap()->GetOutdoorPvPMgr().GetScript(playerVictim->GetCachedZoneId()))
                     outdoorPvP->HandlePlayerKill(responsiblePlayer, playerVictim);
             }
         }
@@ -1467,7 +1462,7 @@ void Unit::JustKilledCreature(Unit* killer, Creature* victim, Player* responsibl
             bg->HandleKillUnit(victim, responsiblePlayer);
 
     // Notify the outdoor pvp script
-    if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(responsiblePlayer ? responsiblePlayer->GetCachedZoneId() : victim->GetZoneId()))
+    if (OutdoorPvP* outdoorPvP = victim->GetMap()->GetOutdoorPvPMgr().GetScript(responsiblePlayer ? responsiblePlayer->GetCachedZoneId() : victim->GetZoneId()))
     {
         outdoorPvP->HandleCreatureDeath(victim);
 
@@ -2045,6 +2040,10 @@ void Unit::CalculateMeleeDamage(Unit* pVictim, CalcDamageInfo* calcDamageInfo, W
         default:
             break;
     }
+
+    // Set after the switch above (it assigns HitInfo) and before the immunity/evade early returns
+    if (IsPlayerControlled() && pVictim->IsPlayerControlled())
+        calcDamageInfo->HitInfo |= HITINFO_PVP;
 
     bool immune = true;
 
@@ -3160,7 +3159,7 @@ uint32 Unit::CalculateDamage(WeaponAttackType attType, bool normalized, uint8 in
 float Unit::CalculateLevelPenalty(SpellEntry const* spellProto) const
 {
     uint32 spellLevel = spellProto->spellLevel;
-    if (spellLevel <= 0)
+    if (spellLevel <= 0 || !spellProto->maxLevel)
         return 1.0f;
 
     float LvlPenalty = 0.0f;
@@ -5345,6 +5344,20 @@ float Unit::GetTotalAuraMultiplierByMiscValue(AuraType auratype, int32 misc_valu
     return multiplier;
 }
 
+float Unit::GetTotalAuraMultiplierByMiscValueAB(AuraType auratype, int32 miscValue, int32 miscValueB) const
+{
+    float multiplier = 1.0f;
+
+    AuraList const& mTotalAuraList = GetAurasByType(auratype);
+    for (auto i : mTotalAuraList)
+    {
+        Modifier* mod = i->GetModifier();
+        if (mod->m_miscvalue == miscValue && i->GetSpellProto()->EffectMiscValueB[i->GetEffIndex()] == miscValueB)
+            multiplier *= (100.0f + mod->m_amount) / 100.0f;
+    }
+    return multiplier;
+}
+
 int32 Unit::GetMaxPositiveAuraModifierByMiscValue(AuraType auratype, int32 misc_value) const
 {
     int32 modifier = 0;
@@ -5587,7 +5600,7 @@ bool Unit::AddSpellAuraHolder(SpellAuraHolder* holder)
                 case TRACK_AURA_TYPE_CONTROL_VEHICLE:       // Only track the controlled vehicle, no secondary effects
                     if (!IsSpellHaveAura(aurSpellInfo, SPELL_AURA_CONTROL_VEHICLE, holder->GetAuraFlags()))
                         break;
-                // no break here, track other controlled
+                    [[fallthrough]]; // no break here, track other controlled
                 case TRACK_AURA_TYPE_SINGLE_TARGET:         // Register spell holder single target
                     scTargets[aurSpellInfo] = GetObjectGuid();
                     break;
@@ -8361,22 +8374,26 @@ uint32 Unit::SpellHealingBonusDone(Unit* victim, SpellEntry const* spellInfo, Sp
         if (Unit* owner = GetOwner())
             return owner->SpellHealingBonusDone(victim, spellInfo, effectIndex, healamount, damagetype, stack);
 
-    // No heal amount for this class spells
-    if (spellInfo->DmgClass == SPELL_DAMAGE_CLASS_NONE)
-        return healamount < 0 ? 0 : healamount;
-
     // Healing Done
     // Done total percent damage auras
     float  DoneTotalMod = 1.0f;
     int32  DoneTotal = 0;
 
+    SpellSchoolMask mask = GetSpellSchoolMask(spellInfo);
+
     // Healing done percent
     AuraList const& mHealingDonePct = GetAurasByType(SPELL_AURA_MOD_HEALING_DONE_PERCENT);
     for (auto i : mHealingDonePct)
+    {
+        if ((i->GetModifier()->m_miscvalue & mask) == 0)
+            continue;
+        if (!i->GetAuraSpellClassMask().Empty() && !i->isAffectedOnSpell(spellInfo))
+            continue;
         DoneTotalMod *= (100.0f + i->GetModifier()->m_amount) / 100.0f;
+    }
 
     // Done fixed damage bonus auras
-    int32 DoneAdvertisedBenefit = SpellBaseHealingBonusDone(GetSpellSchoolMask(spellInfo));
+    int32 DoneAdvertisedBenefit = SpellBaseHealingBonusDone(mask);
 
     // done scripted mod (take it from owner)
     Unit* owner = GetOwner();
@@ -8427,13 +8444,6 @@ uint32 Unit::SpellHealingBonusTaken(Unit* caster, SpellEntry const* spellInfo, S
     // no SPELL_AURA_MOD_PERIODIC_HEAL positive cases
     if (maxval)
         TakenTotalMod *= (100.0f + maxval) / 100.0f;
-
-    // No heal amount for this class spells
-    if (spellInfo->DmgClass == SPELL_DAMAGE_CLASS_NONE)
-    {
-        healamount = int32(healamount * TakenTotalMod);
-        return healamount < 0 ? 0 : healamount;
-    }
 
     // Healing Done
     // Done total percent damage auras
@@ -11302,14 +11312,18 @@ bool Unit::isFrozen() const
 }
 
 ///----------Pet responses methods-----------------
-void Unit::SendPetActionFeedback(uint8 msg) const
+void Unit::SendPetActionFeedback(uint8 msg, uint32 spellId /*= 0*/) const
 {
     Unit* owner = GetOwner();
     if (!owner || owner->GetTypeId() != TYPEID_PLAYER)
         return;
 
-    WorldPacket data(SMSG_PET_ACTION_FEEDBACK, 1);
+    WorldPacket data(SMSG_PET_ACTION_FEEDBACK, 1 + 4);
     data << uint8(msg);
+    // a spell id follows FEEDBACK_NOTHING_TO_ATT and FEEDBACK_CANT_ATT_TARGET only when a pet spell was refused; the client then resets
+    // that spell's cooldown as for a failed pet cast. A refused attack command sends these codes alone.
+    if (spellId)
+        data << uint32(spellId);
     ((Player*)owner)->GetSession()->SendPacket(data);
 }
 
@@ -11411,6 +11425,10 @@ bool Unit::SetConfused(bool apply, ObjectGuid casterGuid, uint32 spellID)
                 Unit* source = (fears.empty() ? nullptr : fears.back()->GetCaster());
                 GetMotionMaster()->MoveFleeing(source ? source : this);
             }
+
+            // The generator that would give control back may be gone (e.g. cleared on uncharm)
+            if (!apply && IsPlayer() && !HasCharmer() && !IsFleeing() && !IsInPanic())
+                static_cast<Player*>(this)->UpdateClientControl(this, true);
         }
 
         if (apply)
@@ -11454,6 +11472,10 @@ bool Unit::SetFleeing(bool apply, ObjectGuid casterGuid/* = ObjectGuid()*/, uint
                 Unit* source = (IsInWorld() ? GetMap()->GetUnit(casterGuid) : nullptr);
                 GetMotionMaster()->MoveFleeing((source ? source : this), duration);
             }
+
+            // The generator that would give control back may be gone (e.g. cleared on uncharm)
+            if (!apply && IsPlayer() && !HasCharmer() && !IsConfused() && !IsInPanic())
+                static_cast<Player*>(this)->UpdateClientControl(this, true);
         }
 
         if (apply)
@@ -12498,6 +12520,16 @@ SpellAuraHolder* Unit::GetSpellAuraHolder(uint32 spellid, ObjectGuid casterGuid)
     return nullptr;
 }
 
+uint8 Unit::GetVisibleAuraFlags(uint8 slot) const
+{
+    SpellAuraHolderConstBounds bounds = GetSpellAuraHolderBounds(GetVisibleAura(slot));
+    for (SpellAuraHolderMap::const_iterator iter = bounds.first; iter != bounds.second; ++iter)
+        if (iter->second->GetAuraSlot() == slot)
+            return iter->second->GetAuraFlags();
+
+    return AFLAG_NONE;
+}
+
 bool Unit::IsAllowedDamageInArea(Unit* attacker, Unit* pVictim)
 {
     if (!attacker) // GOs can damage anywhere
@@ -12862,7 +12894,7 @@ Unit* Unit::TakePossessOf(SpellEntry const* spellEntry, SummonPropertiesEntry co
     if (x == 0.0f && y == 0.0f && z == 0.0f)
         pos = CreatureCreatePos(this, GetOrientation(), CONTACT_DISTANCE, ang);
 
-    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(cinfo->GetHighGuid());
+    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(cinfo->GetHighGuid(), cinfo->Entry);
     if (!possessed->Create(lowGuid, lowGuid, pos, cinfo))
     {
         delete possessed;
@@ -13373,8 +13405,20 @@ void Unit::Uncharm(Unit* charmed, uint32 spellId)
         charmed->GetCharmInfo()->ResetCharmState();
         charmedPlayer->DeleteCharmInfo();
 
+        const bool panic = charmed->IsInPanic(), fleeing = charmed->IsFleeing(), confused = charmed->IsConfused();
+
         charmed->GetMotionMaster()->Clear(false, true);
         charmed->GetMotionMaster()->MoveIdle();
+
+        // The clear destroyed the confused or fleeing movement of a player still under crowd control
+        if (confused)
+            charmed->GetMotionMaster()->MoveConfused();
+        else if (fleeing && !panic)
+        {
+            AuraList const& fears = charmed->GetAurasByType(SPELL_AURA_MOD_FEAR);
+            Unit* source = (fears.empty() ? nullptr : fears.back()->GetCaster());
+            charmed->GetMotionMaster()->MoveFleeing(source ? source : this);
+        }
 
         charmed->DeleteThreatList();
 

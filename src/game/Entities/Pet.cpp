@@ -235,7 +235,7 @@ bool Pet::LoadPetFromDB(Player* owner, Position const& spawnPos, uint32 petentry
 
     CreatureCreatePos pos(owner->GetMap(), spawnPos.x, spawnPos.y, spawnPos.z, spawnPos.o, owner->GetPhaseMask());
 
-    uint32 guid = pos.GetMap()->GenerateLocalLowGuid(HIGHGUID_PET);
+    uint32 guid = pos.GetMap()->GenerateLocalLowGuid(HIGHGUID_PET, pet_number);
     if (!Create(guid, pos, creatureInfo, pet_number))
     {
         return false;
@@ -582,6 +582,7 @@ void Pet::SetOwnerGuid(ObjectGuid owner)
         case GUARDIAN_PET:
             if (!m_controllableGuardian)
                 break;
+            [[fallthrough]];
         case SUMMON_PET:
         case HUNTER_PET:
             SetSummonerGuid(owner);
@@ -945,10 +946,9 @@ bool Pet::CreateBaseAtCreature(Creature* creature)
 
     CreatureCreatePos pos(creature, creature->GetOrientation());
 
-    uint32 guid = creature->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET);
-
     BASIC_LOG("Create pet");
     uint32 pet_number = sObjectMgr.GeneratePetNumber();
+    uint32 guid = creature->GetMap()->GenerateLocalLowGuid(HIGHGUID_PET, pet_number);
     if (!Create(guid, pos, creature->GetCreatureInfo(), pet_number))
         return false;
 
@@ -1963,7 +1963,7 @@ bool Pet::resetTalents(bool no_cost)
 
         if (player->GetMoney() < cost)
         {
-            player->SendBuyError(BUY_ERR_NOT_ENOUGHT_MONEY, nullptr, 0, 0);
+            player->SendBuyError(BuyResult::NOT_ENOUGHT_MONEY, nullptr, 0);
             return false;
         }
     }
@@ -2211,6 +2211,9 @@ bool Pet::Create(uint32 guidlow, CreatureCreatePos& cPos, CreatureInfo const* ci
 {
     SetMap(cPos.GetMap());
     SetPhaseMask(cPos.GetPhaseMask(), false);
+
+    if (!guidlow)                                           // no free map guid counter, already logged
+        return false;
 
     Object::_Create(guidlow, guidlow, pet_number, HIGHGUID_PET);
 

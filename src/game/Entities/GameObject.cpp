@@ -153,7 +153,7 @@ void GameObject::RemoveFromWorld()
     if (IsInWorld())
     {
         // Notify the outdoor pvp script
-        if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(GetZoneId()))
+        if (OutdoorPvP* outdoorPvP = GetMap()->GetOutdoorPvPMgr().GetScript(GetZoneId()))
             outdoorPvP->HandleGameObjectRemove(this);
 
         // Remove GO from owner
@@ -202,6 +202,9 @@ bool GameObject::Create(uint32 dbGuid, uint32 guidlow, uint32 name_id, Map* map,
         sLog.outErrorDb("Gameobject (GUID: %u) not created: Entry %u does not exist in `gameobject_template`. Map: %u  (X: %f Y: %f Z: %f) ang: %f", dbGuid, name_id, map->GetId(), x, y, z, ang);
         return false;
     }
+
+    if (!guidlow)                                           // no free map guid counter, already logged
+        return false;
 
     Object::_Create(dbGuid, guidlow, goinfo->id, goinfo->GetHighGuid());
 
@@ -260,7 +263,7 @@ bool GameObject::Create(uint32 dbGuid, uint32 guidlow, uint32 name_id, Map* map,
                 GetVisibilityData().SetInvisibilityMask(INVISIBILITY_TRAP, true);
                 GetVisibilityData().AddInvisibilityValue(INVISIBILITY_TRAP, 300);
             }
-            // [[fallthrough]]
+            [[fallthrough]];
         case GAMEOBJECT_TYPE_FISHINGNODE:
             m_lootState = GO_NOT_READY;                     // Initialize Traps and Fishingnode delayed in ::Update
             break;
@@ -294,7 +297,7 @@ bool GameObject::Create(uint32 dbGuid, uint32 guidlow, uint32 name_id, Map* map,
     // Notify the battleground or outdoor pvp script
     if (map->IsBattleGroundOrArena())
         ((BattleGroundMap*)map)->GetBG()->HandleGameObjectCreate(this);
-    else if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(GetZoneId()))
+    else if (OutdoorPvP* outdoorPvP = GetMap()->GetOutdoorPvPMgr().GetScript(GetZoneId()))
         outdoorPvP->HandleGameObjectCreate(this);
 
     // Notify the map's instance data.
@@ -386,6 +389,7 @@ void GameObject::Update(const uint32 diff)
                         return;
                     }
                     m_lootState = GO_READY;
+                    [[fallthrough]];
                 }
                 default:
                     break;
@@ -422,6 +426,7 @@ void GameObject::Update(const uint32 diff)
                             // we need to open doors if they are closed (add there another condition if this code breaks some usage, but it need to be here for battlegrounds)
                             if (GetGoState() != GO_STATE_READY)
                                 ResetDoorOrButton();
+                            [[fallthrough]];
                         // flags in AB are type_button and we need to add them here so no break!
                         default:
                             if (!m_spawnedByDefault)        // despawn timer
@@ -974,7 +979,7 @@ bool GameObject::LoadFromDB(uint32 dbGuid, Map* map, uint32 newGuid, uint32 forc
     }
 
     if (dynguid || newGuid == 0)
-        newGuid = map->GenerateLocalLowGuid(goinfo->GetHighGuid());
+        newGuid = map->GenerateLocalLowGuid(goinfo->GetHighGuid(), entry);
 
     if (!Create(dbGuid, newGuid, entry, map, phaseMask, x, y, z, ang, data->rotation, animprogress, GO_STATE_READY))
         return false;
@@ -1206,7 +1211,7 @@ bool GameObject::isVisibleForInState(Player const* u, WorldObject const* viewPoi
                         isEnemyTrap = true;
                 }
             }
-            //[[fallthrough]]
+                [[fallthrough]];
             default:
             {
                 if (GetVisibilityData().GetInvisibilityMask()) // invisible gos
@@ -1351,7 +1356,7 @@ GameObject* GameObject::SummonLinkedTrapIfAny() const
         return nullptr;
 
     GameObject* linkedGO = new GameObject;
-    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT);
+    uint32 lowGuid = GetMap()->GenerateLocalLowGuid(HIGHGUID_GAMEOBJECT, linkedEntry);
     if (!linkedGO->Create(lowGuid, lowGuid, linkedEntry, GetMap(),
                           GetPhaseMask(), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation()))
     {
@@ -1506,14 +1511,6 @@ bool GameObject::CanUseNow(Player const* player) const
         case GAMEOBJECT_TYPE_BARBER_CHAIR:
         {
             if (player->GetDisplayId() != player->GetNativeDisplayId() || player->IsShapeShifted())
-                return false;
-            [[fallthrough]];
-        }
-        case GAMEOBJECT_TYPE_CHAIR:
-        {
-            float x, y;
-            std::tie(x, y) = GetClosestChairSlotPosition(player);
-            if (player->GetDistance(x, y, GetPositionZ(), DIST_CALC_NONE, GetTransport()) > 3.f * 3.f)
                 return false;
             break;
         }
@@ -1744,7 +1741,9 @@ void GameObject::Use(Unit* user, SpellEntry const* spellInfo)
             // a chair may have n slots. we have to calculate their positions and teleport the player to the nearest one
             float slotX, slotY;
             std::tie(slotX, slotY) = GetClosestChairSlotPosition(user);
-            user->NearTeleportTo(slotX, slotY, GetPositionZ(), GetOrientation());
+            // the seat and the chair's height and orientation are relative to its transport, if any
+            Position const& chairPos = GetPosition(GetTransport());
+            user->NearTeleportTo(slotX, slotY, chairPos.GetPositionZ(), chairPos.GetPositionO());
             user->SetStandState(UNIT_STAND_STATE_SIT_LOW_CHAIR + info->chair.height);
 
             if (uint32 eventId = GetGOInfo()->chair.triggeredEvent)
@@ -2590,7 +2589,7 @@ void GameObject::TickCapturePoint()
 
         // handle objective complete
         if (m_captureState == CAPTURE_STATE_NEUTRAL)
-            if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript((*capturingPlayers.begin())->GetCachedZoneId()))
+            if (OutdoorPvP* outdoorPvP = GetMap()->GetOutdoorPvPMgr().GetScript((*capturingPlayers.begin())->GetCachedZoneId()))
                 outdoorPvP->HandleObjectiveComplete(eventId, capturingPlayers, progressFaction);
 
         // set capture state to alliance
@@ -2603,7 +2602,7 @@ void GameObject::TickCapturePoint()
 
         // handle objective complete
         if (m_captureState == CAPTURE_STATE_NEUTRAL)
-            if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript((*capturingPlayers.begin())->GetCachedZoneId()))
+            if (OutdoorPvP* outdoorPvP = GetMap()->GetOutdoorPvPMgr().GetScript((*capturingPlayers.begin())->GetCachedZoneId()))
                 outdoorPvP->HandleObjectiveComplete(eventId, capturingPlayers, progressFaction);
 
         // set capture state to horde
@@ -3026,7 +3025,7 @@ std::pair<float, float> GameObject::GetClosestChairSlotPosition(Unit const* user
     // check if the db is sane
     if (GetGOInfo()->chair.slots > 0)
     {
-        float lowestDist = DEFAULT_VISIBILITY_DISTANCE;
+        float lowestDist = std::numeric_limits<float>::max();
 
         float x_lowest = pos.GetPositionX();
         float y_lowest = pos.GetPositionY();

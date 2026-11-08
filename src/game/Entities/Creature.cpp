@@ -961,7 +961,7 @@ bool Creature::Create(uint32 dbGuid, uint32 guidlow, CreatureCreatePos& cPos, Cr
     // Notify the pvp script
     if (GetMap()->IsBattleGroundOrArena())
         static_cast<BattleGroundMap*>(GetMap())->GetBG()->HandleCreatureCreate(this);
-    else if (OutdoorPvP* outdoorPvP = sOutdoorPvPMgr.GetScript(GetZoneId()))
+    else if (OutdoorPvP* outdoorPvP = GetMap()->GetOutdoorPvPMgr().GetScript(GetZoneId()))
         outdoorPvP->HandleCreatureCreate(this);
 
     // Notify the map's instance data.
@@ -1763,6 +1763,9 @@ bool Creature::IsTreatAsPlayerForDiminishingReturns() const
 
 bool Creature::CreateFromProto(uint32 dbGuid, uint32 guidlow, CreatureInfo const* cinfo, const CreatureData* data /*=nullptr*/, GameEventCreatureData const* eventData /*=nullptr*/)
 {
+    if (!guidlow)                                           // no free map guid counter, already logged
+        return false;
+
     m_originalEntry = cinfo->Entry;
 
     uint32 newEntry = cinfo->Entry;
@@ -1831,7 +1834,7 @@ bool Creature::LoadFromDB(uint32 dbGuid, Map* map, uint32 newGuid, uint32 forced
     }
 
     if (dynguid || newGuid == 0)
-        newGuid = map->GenerateLocalLowGuid(cinfo->GetHighGuid());
+        newGuid = map->GenerateLocalLowGuid(cinfo->GetHighGuid(), cinfo->Entry);
 
     Position dbPos(data->posX, data->posY, data->posZ, data->orientation);
     if (transport)
