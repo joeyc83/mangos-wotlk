@@ -333,6 +333,9 @@ bool SpellStacker::IsStackableAuraEffect(SpellEntry const* entry, SpellEntry con
         case SPELL_AURA_PHASE:
             return true; // Always stacking auras
             break;
+        case SPELL_AURA_MOD_DISARM:
+        case SPELL_AURA_MOD_DISARM_OFFHAND:
+        case SPELL_AURA_MOD_DISARM_RANGED:
         case SPELL_AURA_MOD_POSSESS: // Mind control derrivatives
         case SPELL_AURA_MOD_POSSESS_PET: // Eyes of the beast
         case SPELL_AURA_MOD_CHARM: // Temporary Enslave/Tame derrivatives
